@@ -1,154 +1,350 @@
-package com.example.database;
+package com.example.server;
 
-import android.app.Dialog;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.sql.Array;
+import java.util.ArrayList;
+import java.util.Enumeration;
+
 import android.os.Bundle;
 import android.app.Activity;
-import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.RadioGroup;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import java.io.IOException;
-import java.util.Objects;
-import java.util.Scanner;
+import com.google.android.material.tabs.TabLayout;
 
 public class MainActivity extends Activity {
 
-    Server server;
-    Client client;
-
+    TextView info, infoip, msg;
+    String message = "", response = "";
+    ServerSocket serverSocket;
+    Manager manager;
+    Person p;
+    ArrayList<Person> clients = new ArrayList<>();
     RecyclerView rec;
     RecAdapter recAdapter;
-    TextView response;
-    EditText username, password;
-    Button check, add;
-    boolean isLoggedIn = false;
+    Socket socket = null;
+    DataInputStream dataInputStream = null;
+    DataOutputStream dataOutputStream = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        username = findViewById(R.id.username);
-        password = findViewById(R.id.password);
-        check = findViewById(R.id.check);
-        response = findViewById(R.id.response);
-        add = findViewById(R.id.add);
-        client = new Client(this, "localhost", 1234);
-        server = new Server(this);
+
+        info = (TextView) findViewById(R.id.info);
+        infoip = (TextView) findViewById(R.id.infoip);
+        msg = (TextView) findViewById(R.id.msg);
+        infoip.setText(getIpAddress());
 
         rec = findViewById(R.id.rec);
         rec.setLayoutManager(new LinearLayoutManager(this));
 
-        check.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(!isLoggedIn) {
-                    client.usernamepassword = username.getText().toString() + "," + password.getText().toString();
-                    if (client.usernamepassword.equals(",")) updateResponse("NoLoginInput");
-                    else {
-                        client.startThread();
-                        updateResponse("Login/Signin erfolgreich!");
-                        username.setVisibility(View.GONE);
-                        password.setVisibility(View.GONE);
-                        isLoggedIn = true;
-                        check.setText("DISCONNECT");
-                        add.setVisibility(View.VISIBLE);
-                        recAdapter = new RecAdapter(client.taxon);
-                        rec.setAdapter(recAdapter);
+        manager = new Manager(this);
+
+        try {
+
+            serverSocket = new ServerSocket(8080);
+            createThread();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void createThread() {
+        Thread thread = new Thread(new SocketServerThread());
+        thread.start();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        if (serverSocket != null) {
+            try {
+                serverSocket.close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private class SocketServerThread extends Thread {
+
+        int count = 0;
+
+        @Override
+        public void run() {
+
+
+            try {
+
+                MainActivity.this.runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        info.setText("I'm waiting here: " + serverSocket.getLocalPort());
+
                     }
-                }else {
-                    // TODO: Disconnect
+                });
+
+                while (true) {
+                    socket = serverSocket.accept();
+                    createThread();
+                    dataInputStream = new DataInputStream(
+                            socket.getInputStream());
+                    dataOutputStream = new DataOutputStream(
+                            socket.getOutputStream());
+                    dataOutputStream.writeUTF("Connected successfully!");
+                    String messageFromClient = "";
+
+                    //Check available() before readUTF(),
+                    //to prevent program blocked if dataInputStream is empty
+                    while (true) {
+                        if (dataInputStream.available() > 0) {
+                            messageFromClient = dataInputStream.readUTF();
+
+                            System.out.println(messageFromClient);
+                            count++;
+                            message += "#" + count + " from " + socket.getInetAddress()
+                                    + ":" + socket.getPort() + "\n"
+                                    + "Msg from client: " + messageFromClient + "\n";
+
+                            MainActivity.this.runOnUiThread(new Runnable() {
+
+                                @Override
+                                public void run() {
+                                    msg.setText(message);
+                                }
+                            });
+
+                            if (messageFromClient.equals("login")) {
+
+                                p = login(dataInputStream.readUTF());
+
+                                if (p == null) {
+                                    dataOutputStream.writeUTF("NoUserFound");
+                                    continue;
+                                }
+
+                                if (p.getPassword().equals(dataInputStream.readUTF())) {
+
+                                    if (p.isAdmin()) {
+                                        dataOutputStream.writeUTF("Welcome Admin " + p.getUsername());
+
+                                    } else
+                                        dataOutputStream.writeUTF("Welcome User " + p.getUsername());
+
+                                    dataOutputStream.writeInt(manager.taxon.size());
+                                    for (GenBankEntry g : manager.taxon) {
+                                        dataOutputStream.writeUTF(g.getFormat());
+                                    }
+
+                                }
+                            } else if (messageFromClient.equals("signin")) {
+
+                                String username = dataInputStream.readUTF(), password = dataInputStream.readUTF();
+                                manager.addUser(new Person(username, password));
+                                dataOutputStream.writeUTF("You are signed in!");
+
+                            } else if (messageFromClient.equals("dotplot")) {
+
+                                GenBankEntry genBankEntry_1 = manager.taxon.get(Integer.parseInt(dataInputStream.readUTF()));
+                                GenBankEntry genBankEntry_2 = manager.taxon.get(Integer.parseInt(dataInputStream.readUTF()));
+                                dataOutputStream.writeUTF("dotplotresult");
+
+                                ArrayList<String> rows = createStringDotPlot(genBankEntry_1.fasta.dna, genBankEntry_2.fasta.dna);
+                                dataOutputStream.writeInt(-1);
+                                    dataOutputStream.writeInt(rows.size());
+                                for (int i = 0; i < rows.size(); i++) {
+                                    dataOutputStream.writeUTF(rows.get(i));
+                                    System.out.println(rows.get(i));
+                                    dataOutputStream.flush();
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+                final String errMsg = e.toString();
+                MainActivity.this.runOnUiThread(new Runnable() {
+
+                    @Override
+                    public void run() {
+                        msg.setText(errMsg);
+                    }
+                });
+
+            } finally {
+                if (socket != null) {
+                    try {
+                        socket.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+                if (dataInputStream != null) {
+                    try {
+                        dataInputStream.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+                if (dataOutputStream != null) {
+                    try {
+                        dataOutputStream.close();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+
+    }
+
+    private Person login(String username) {
+        for (Person p : manager.user) {
+            if (username.equals(p.getUsername())) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    private ArrayList<String> createStringDotPlot(String x, String y) {
+        System.out.println(x);
+        ArrayList<String> rows = new ArrayList<>();
+        rows.add("  " + x + "\n");
+        char[] xchars = x.toCharArray(), ychars = y.toCharArray();
+        int hammingdistanz = 0;
+
+        for (int i = 0; i < y.length(); i++) { // y-Kooridnate
+            String row = "";
+            row += y.charAt(i);
+            row += " ";    // Abstand zu Plot
+
+            for (int j = 0; j < x.length(); j++) { // x-Koordinate
+                if (xchars[j] == ychars[i]) {
+                    row += "*";
+                } else row += " ";
+            }
+            row += "\n";
+            rows.add(row);
+
+            if (i % 50 == 0 & i >= 50)
+                new Thread(new SendThread((float) i / y.length() * 100)).start();
+        }
+        return rows;
+
+    }
+
+
+    private String getIpAddress() {
+        String ip = "";
+        try {
+            Enumeration<NetworkInterface> enumNetworkInterfaces = NetworkInterface
+                    .getNetworkInterfaces();
+            while (enumNetworkInterfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = enumNetworkInterfaces
+                        .nextElement();
+                Enumeration<InetAddress> enumInetAddress = networkInterface
+                        .getInetAddresses();
+                while (enumInetAddress.hasMoreElements()) {
+                    InetAddress inetAddress = enumInetAddress.nextElement();
+
+                    if (inetAddress.isSiteLocalAddress()) {
+                        ip += "SiteLocalAddress: "
+                                + inetAddress.getHostAddress() + "\n";
+                    }
+
                 }
 
             }
-        });
 
-        add.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+        } catch (SocketException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            ip += "Something Wrong! " + e.toString() + "\n";
+        }
 
-                Dialog add = new Dialog(MainActivity.this);
-                add.setContentView(R.layout.add_dialog);
-                EditText data = add.findViewById(R.id.data);
-                Button apply = add.findViewById(R.id.apply);
-                RadioGroup radioGroup = add.findViewById(R.id.group);
-                radioGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
-                    @Override
-                    public void onCheckedChanged(RadioGroup group, int checkedId) {
-                        switch (checkedId) {
-                            case R.id.myFormat:
-                                data.setText(getString(R.string.bsp));
-                                break;
-                            case R.id.embl:
-                                data.setText(getString(R.string.bsp2));
-                                break;
-                            case R.id.genbank:
-                                data.setText(getString(R.string.bsp1));
-                                break;
-                        }
-                    }
-                });
-
-
-                apply.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-
-                        GenBankEntry genBankEntry = new GenBankEntry();
-                        boolean convertion = false;
-
-                        switch (radioGroup.getCheckedRadioButtonId()) {
-                            case R.id.myFormat:
-                                convertion = genBankEntry.extract(getString(R.string.bsp), "def", "acc", "key", "org", "aut", "dna");
-                                break;
-                            case R.id.embl:
-                                convertion = genBankEntry.extract(getString(R.string.bsp2), "DE", "AC", "KW", "OS", "RA", "SQ");
-                                break;
-                            case R.id.genbank:
-                                convertion = genBankEntry.extract(getString(R.string.bsp1), "DEFINITION", "ACCESSION", "KEYWORDS", "  AUTHORS", "  ORGANISM", "ORIGIN");
-                                break;
-
-                        }
-                        if(convertion) {
-                            Toast.makeText(MainActivity.this, "convertion complete", Toast.LENGTH_LONG).show();
-                            add.cancel();
-                            client.taxon.add(0, genBankEntry);
-                            Objects.requireNonNull(rec.getAdapter()).notifyItemInserted(0);
-                            new Thread(new ClientTransportThread()).start();
-                        }else Toast.makeText(MainActivity.this, "convertion error", Toast.LENGTH_LONG).show();
-                    }
-                });
-
-                add.show();
-            }
-        });
-
-
+        return ip;
     }
-    public class ClientTransportThread extends Thread {
+    private class IntDotplot extends Thread {
+
+        DataOutputStream dataOutputStream;
+        String x, y;
+
+        IntDotplot(DataOutputStream dataOutputStream, String x, String y) {
+            this.dataOutputStream = dataOutputStream;
+            this.x = x;
+            this.y = y;
+        }
+
+        @Override
+        public void run() {
+
+            char[] xchars = x.toCharArray(), ychars = y.toCharArray();
+
+            for (int i = 0; i < y.length(); i++) { // y-Kooridnate
+
+                for (int j = 0; j < x.length(); j++) { // x-Koordinate
+
+                    if (xchars[j] == ychars[i]) {
+
+                        try {
+
+                            dataOutputStream.writeInt(i);
+                            dataOutputStream.writeInt(j);
+                            dataOutputStream.flush();
+
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                    }
+                }
+                
+            }
+        }
+    }
+
+    private class SendThread extends Thread {
+
+        int percentage;
+
+        SendThread(float percentage) {
+            this.percentage = (int) percentage;
+        }
 
         @Override
         public void run() {
 
             try {
-                client.bufferedWriter.write(client.taxon.get(0).getFormat());
-                client.bufferedWriter.flush();
+
+                dataOutputStream.writeInt(percentage);
+                dataOutputStream.flush();
+                System.out.println(percentage);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-    }
-    void updateResponse(String msg) {
-        response.setText(msg);
-    }
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        server.onDestroy();
     }
 }

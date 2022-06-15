@@ -1,12 +1,14 @@
-package com.example.database;
+package com.example.server;
 
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
+
 import java.util.ArrayList;
 
 public class RecAdapter extends RecyclerView.Adapter<RecItem> {
@@ -100,6 +102,7 @@ public class RecAdapter extends RecyclerView.Adapter<RecItem> {
         return taxon.size();
     }
 }
+
 class RecItem extends RecyclerView.ViewHolder {
 
     TextView header, def, acc, key, org, aut, dna, defTV, accTV, keyTV, orgTV, autTV, dnaTV;
@@ -107,19 +110,6 @@ class RecItem extends RecyclerView.ViewHolder {
 
     public RecItem(@NonNull View itemView) {
         super(itemView);
-        header = itemView.findViewById(R.id.header);
-        def = itemView.findViewById(R.id.def);
-        acc = itemView.findViewById(R.id.acc);
-        key = itemView.findViewById(R.id.key);
-        org = itemView.findViewById(R.id.org);
-        aut = itemView.findViewById(R.id.aut);
-        dna = itemView.findViewById(R.id.dna);
-        defTV = itemView.findViewById(R.id.defTV);
-        accTV = itemView.findViewById(R.id.accTV);
-        keyTV = itemView.findViewById(R.id.keyTV);
-        orgTV = itemView.findViewById(R.id.orgTV);
-        autTV = itemView.findViewById(R.id.autTV);
-        dnaTV = itemView.findViewById(R.id.dnaTV);
-        lay = itemView.findViewById(R.id.lay);
+
     }
 }

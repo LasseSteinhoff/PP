@@ -1,20 +1,35 @@
-package com.example.database;
+package com.example.client;
 
+import android.app.Activity;
+import android.content.Context;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
+
 import java.util.ArrayList;
 
 public class RecAdapter extends RecyclerView.Adapter<RecItem> {
 
     ArrayList<GenBankEntry> taxon;
+    int dotplottaxonindex_1 = -1, dotplottaxonindex_2 = -1;
+    boolean switching = true;
+    Context context;
+    Button buttondotplot;
+    ProgressBar progressBar;
 
-    public RecAdapter(ArrayList<GenBankEntry> taxon) {
+    public RecAdapter(Context context, ArrayList<GenBankEntry> taxon, Button buttondotplot, ProgressBar progressBar) {
         this.taxon = taxon;
+        this.progressBar = progressBar;
+        this.context = context;
+        this.buttondotplot = buttondotplot;
     }
 
     @NonNull
@@ -92,7 +107,25 @@ public class RecAdapter extends RecyclerView.Adapter<RecItem> {
                 }else holder.dna.setVisibility(View.VISIBLE);
             }
         });
-
+        holder.header.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                if(switching) {
+                    dotplottaxonindex_1 = holder.getAdapterPosition();
+                    switching = !switching;
+                    Toast.makeText(context, "Dotplotslot 1", Toast.LENGTH_LONG).show();
+                }else {
+                    dotplottaxonindex_2 = holder.getAdapterPosition();
+                    switching = !switching;
+                    Toast.makeText(context, "Dotplotslot 2", Toast.LENGTH_LONG).show();
+                }
+                if(dotplottaxonindex_1 != -1 & dotplottaxonindex_2 != -1){
+                    buttondotplot.setVisibility(View.VISIBLE);
+                    progressBar.setVisibility(View.VISIBLE);
+                }
+                return false;
+            }
+        });
     }
 
     @Override
@@ -100,6 +133,7 @@ public class RecAdapter extends RecyclerView.Adapter<RecItem> {
         return taxon.size();
     }
 }
+
 class RecItem extends RecyclerView.ViewHolder {
 
     TextView header, def, acc, key, org, aut, dna, defTV, accTV, keyTV, orgTV, autTV, dnaTV;

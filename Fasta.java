@@ -1,4 +1,4 @@
-package com.example.database;
+package com.example.client;
 
 class Fasta {
 

@@ -1,4 +1,4 @@
-package com.example.database;
+package com.example.client;
 
 public class Person {
     String username, password;

@@ -1,4 +1,4 @@
-package com.example.database;
+package com.example.client;
 
 import android.content.Context;
 
@@ -12,8 +12,8 @@ public class Manager {
 
     Manager(Context context) {
         Hawk.init(context).build();
-        user = Hawk.get("user", new ArrayList<>());
-        taxon = Hawk.get("taxon", new ArrayList<>());
+
+
     }
 
     GenBankEntry getTaxon(int pos) {
